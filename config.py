@@ -8,4 +8,3 @@ accounts = []  # acconts to scrap
 
 instagram_user = ''  # your account
 instagram_password = ''  # your password
-

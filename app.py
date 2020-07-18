@@ -5,7 +5,7 @@ from googletrans import Translator
 import emoji
 from datetime import datetime
 import datetime as dt
-
+from errno import errorcode
 import config
 
 DB = psycopg2.connect(options=f'-c search_path={config.options}', database=config.database, user=config.user,
@@ -17,7 +17,7 @@ trans = Translator()
 
 def parse(account):
     os.system(
-        f'instagram-scraper {account} --comments')#-u {config.instagram_user} -p {config.instagram_password}
+        f'instagram-scraper {account} -m 100 --comments')#-u {config.instagram_user} -p {config.instagram_password}
 
 
 def read_json(account):
@@ -63,7 +63,7 @@ def read_json(account):
 def save_posts(posts, account):
     for post in posts:
         try:
-            sql_formula = f'INSERT INTO post_test(id, description, account, display_url, created_at) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING'
+            sql_formula = f'INSERT INTO ig_popular_accs_posts(id, description, ig_account, display_url, created_at) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING'
             content = (
                 [post['id'], post['description'], account, post['display_url'], post['release_post']])
 
@@ -73,27 +73,27 @@ def save_posts(posts, account):
         DB.commit()
 
 
-def save_comments(comments):
+def save_comments(comments, account):
     for i in comments:
         try:
-            sql_formula = f'INSERT INTO comment_test( id ,post_id, owner_id, username, comment_text, created_at) VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING'
+            sql_formula = f'INSERT INTO ig_popular_accs_comments( id ,post_id, owner_id, ig_account,username, comment_text, created_at) VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING'
 
-            content = ([i['id'], i['post_id'], i['owner_id'], i['username'], i['comment_text'], i['created_at']])
+            content = ([i['id'], i['post_id'], i['owner_id'], account, i['username'], i['comment_text'], i['created_at']])
             MY_CURSOR.execute(sql_formula, content)
         except:
             pass
         DB.commit()
 
 
-def find_deleted_messages(items):
-    MY_CURSOR.execute(f"UPDATE comment SET deleted=TRUE")
+def find_deleted_messages(items, account):
+    MY_CURSOR.execute(f"UPDATE ig_popular_accs_comments SET deleted=TRUE where ig_account='{account}'")
     for i in items:
-        MY_CURSOR.execute(f"UPDATE comment SET deleted=FALSE where id='{i['id']}'")
+        MY_CURSOR.execute(f"UPDATE ig_popular_accs_comments SET deleted=FALSE where id='{i['id']}' and ig_account='{account}'")
         DB.commit()
 
 
 def translate():
-    MY_CURSOR.execute('select * from post where description_ru is null or description_en is null')
+    MY_CURSOR.execute('select * from ig_popular_accs_posts where description_ru is null or description_en is null')
     posts = MY_CURSOR.fetchall()
     for ps in posts:
         strin = ps[1]
@@ -102,10 +102,10 @@ def translate():
         description_en = trans.translate(no_emoji, dest='en')
         dosca = description_en.text.replace("'", '"')
         MY_CURSOR.execute(
-            f"update post set description_ru='{description_ru.text}', description_en='{dosca}' where id={ps[0]}")
+            f"update ig_popular_accs_posts set description_ru='{description_ru.text}', description_en='{dosca}' where id={ps[0]}")
         DB.commit()
 
-    MY_CURSOR.execute('select * from comment where comment_text_ru is null or comment_text_en is null')
+    MY_CURSOR.execute('select * from ig_popular_accs_comments where comment_text_ru is null or comment_text_en is null')
     coments = MY_CURSOR.fetchall()
     for com in coments:
         strin = com[4]
@@ -114,26 +114,28 @@ def translate():
         comment_text_en = trans.translate(no_emoji, dest='en')
         dosca = comment_text_en.text.replace("'", '"')
         MY_CURSOR.execute(
-            f"update comment set comment_text_ru='{comment_text_ru.text}', comment_text_en='{dosca}' where id={com[0]}")
+            f"update ig_popular_accs_comments set comment_text_ru='{comment_text_ru.text}', comment_text_en='{dosca}' where id={com[0]}")
         DB.commit()
 
 
 def main():
     for i in range(len(config.accounts)):
-        parse(config.accounts[i])
+        try:
+            parse(config.accounts[i])
 
-        read_json(config.accounts[i])
+            read_json(config.accounts[i])
 
-        posts, comments = read_json(config.accounts[i])
+            posts, comments = read_json(config.accounts[i])
 
-        MY_CURSOR.execute('create table if not exists post_test(id bigint not null constraint post_pk primary key, description text, account text, display_url text, description_ru text default null, description_en text default null, created_at timestamp)')
-        save_posts(posts, config.accounts[i])
+            MY_CURSOR.execute('create table if not exists ig_popular_accs_posts(id bigint not null constraint post_pk primary key, description text, ig_account text, display_url text, description_ru text default null, description_en text default null, created_at timestamp)')
+            save_posts(posts, config.accounts[i])
 
-        MY_CURSOR.execute('create table if not exists comment_test(id bigserial not null constraint comment_pkey primary key, post_id bigint not null constraint comment_post_id_fk references post_test, owner_id bigint not null, username varchar(30) not null, comment_text text not null, deleted boolean default false, created_at timestamp, comment_text_ru text default null, comment_text_en text default null)')
-        save_comments(comments)
+            MY_CURSOR.execute('create table if not exists ig_popular_accs_comments(id bigserial not null constraint comment_pkey primary key, post_id bigint not null constraint comment_post_id_fk references ig_popular_accs_posts, owner_id bigint not null, ig_account varchar(30) not null, username varchar(30) not null, comment_text text not null, deleted boolean default false, created_at timestamp, comment_text_ru text default null, comment_text_en text default null)')
+            save_comments(comments, config.accounts[i])
 
-        find_deleted_messages(comments)
+            find_deleted_messages(comments, config.accounts[i])
 
-        # translate()
-
+            # translate()
+        except:
+            pass
 main()
