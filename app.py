@@ -17,7 +17,7 @@ trans = Translator()
 
 def parse(account):
     os.system(
-        f'instagram-scraper {account} -m 100 --comments')#-u {config.instagram_user} -p {config.instagram_password}
+        f'instagram-scraper {account} -m 100 --retry-forever --comments')#-u {config.instagram_user} -p {config.instagram_password}
 
 
 def read_json(account):
